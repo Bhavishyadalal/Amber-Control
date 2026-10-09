@@ -233,6 +233,8 @@ body.off .art{transform:scale(.88)!important}
   #connect h1{font-size:26px}.steps{display:none}
 }
 @media (prefers-reduced-motion:reduce){*{animation-duration:.001s!important;animation-iteration-count:1!important;transition-duration:.001s!important}.spin{animation:sp .8s linear infinite!important}}
+
+.sbox #q-filter{min-width:0} #q-clear-remote{font-size:12px;white-space:nowrap}.tip input{accent-color:var(--accent)}.off #v-player [data-a],.off #v-mic [data-a]{opacity:.55}
 </style>
 </head>
 <body>
@@ -256,13 +258,13 @@ body.off .art{transform:scale(.88)!important}
     </div>
     <p class="msg" id="cmsg" role="status" aria-live="polite"></p>
     <label class="namebox">This phone's name<input id="pname" type="text" maxlength="24" autocomplete="off" spellcheck="false" aria-label="This phone's name"></label>
-    <p class="tip">Your PC asks you to press Allow the first time. After that this phone reconnects by itself.</p>
+    <label class="tip"><input id="auto-connect" type="checkbox"> Reconnect to this code when I reopen</label><p class="tip">Press Allow on your PC the first time. Saved access stays on this phone. You can change the code or cancel at any time.</p>
   </section>
 
   <!-- remote -->
   <section id="main" hidden>
     <div class="top">
-      <span class="brand">Amber<i></i></span>
+      <span class="brand">Amber<i></i><small id="connected-to" style="display:block;font-size:11px;font-weight:500"></small></span>
       <span class="grow"></span>
       <button class="pill" id="pill" type="button" aria-live="polite"><i></i><span id="pilltx">Connecting</span></button>
       <button class="ibtn" id="wk" type="button" aria-label="Keep screen on"><svg viewBox="0 0 24 24"><rect x="5" y="2" width="14" height="20" rx="3"/><path d="M12 18h.01"/></svg></button>
@@ -293,7 +295,7 @@ body.off .art{transform:scale(.88)!important}
             <button class="chip" data-a="speed" type="button"><svg viewBox="0 0 24 24"><path d="M12 14l4-4"/><path d="M3.3 17a10 10 0 1 1 17.4 0"/></svg><span id="b-speed">1&times;</span></button>
             <button class="chip" data-a="mute" id="b-mute" type="button"><svg viewBox="0 0 24 24"><path d="M11 5 6 9H2v6h4l5 4zM22 9l-6 6M16 9l6 6"/></svg><span>Mute</span></button>
           </div>
-          <div class="vol"><svg viewBox="0 0 24 24"><path d="M11 5 6 9H2v6h4l5 4z"/></svg><input type="range" id="p-vol" min="0" max="100" value="50" aria-label="Volume"><svg viewBox="0 0 24 24"><path d="M11 5 6 9H2v6h4l5 4zM15.5 8.5a5 5 0 0 1 0 7M19 5a10 10 0 0 1 0 14"/></svg></div>
+          <p id="remote-download" class="tip" role="status"></p><div class="vol"><svg viewBox="0 0 24 24"><path d="M11 5 6 9H2v6h4l5 4z"/></svg><input type="range" id="p-vol" min="0" max="100" value="50" aria-label="Volume"><svg viewBox="0 0 24 24"><path d="M11 5 6 9H2v6h4l5 4zM15.5 8.5a5 5 0 0 1 0 7M19 5a10 10 0 0 1 0 14"/></svg></div>
         </div>
       </div>
 
@@ -305,7 +307,7 @@ body.off .art{transform:scale(.88)!important}
       <div class="view" id="v-queue">
         <div class="seg" id="q-seg"><button data-q="queue" class="on" type="button">Queue</button><button data-q="liked" type="button">Liked</button><button data-q="recent" type="button">Recent</button></div>
         <div id="q-acts" class="acts" hidden><button class="btn" data-lib="play" type="button">Play all</button><button class="btn ghost" data-lib="shuffle" type="button">Shuffle</button></div>
-        <div id="q-out"></div>
+        <div class="sbox"><input id="q-filter" type="search" placeholder="Filter this list" aria-label="Filter queue or library"><button id="q-clear-remote" class="btn ghost" type="button">Clear queue</button></div><div id="q-out"></div>
       </div>
 
       <div class="view" id="v-mic">
@@ -386,8 +388,9 @@ var esc = function(s){ return String(s == null ? '' : s).replace(/[&<>"']/g, fun
 var num = function(v, a, b){ v = +v; if(!isFinite(v)) v = a; return Math.min(b, Math.max(a, v)); };
 
 /* ---------------- storage ---------------- */
-var store = {token: '', code: '', name: '', wake: false, ms: false};
-try{ var o = JSON.parse(localStorage.getItem(LS) || '{}') || {}; store.token = typeof o.token === 'string' ? o.token.slice(0, 80) : ''; store.code = CODE_RE.test(o.code || '') ? o.code : ''; store.name = typeof o.name === 'string' ? o.name.slice(0, 24) : ''; store.wake = !!o.wake; store.ms = !!o.ms; }catch(_){}
+var store = {token:'',code:'',name:'',wake:false,ms:false,auto:false,tokens:{}};
+try{ var o = JSON.parse(localStorage.getItem(LS) || '{}') || {}; store.token = typeof o.token === 'string' ? o.token.slice(0, 80) : ''; store.code = CODE_RE.test(o.code || '') ? o.code : ''; store.name = typeof o.name === 'string' ? o.name.slice(0, 24) : ''; store.wake = !!o.wake; store.ms = !!o.ms; store.auto = o.auto === true; if(o.tokens && typeof o.tokens === 'object' && !Array.isArray(o.tokens)){ Object.keys(o.tokens).slice(-12).forEach(function(k){ if(CODE_RE.test(k) && typeof o.tokens[k] === 'string' && o.tokens[k].length >= 32 && o.tokens[k].length <= 80) store.tokens[k] = o.tokens[k]; }); } if(store.code && store.token && !store.tokens[store.code]) store.tokens[store.code] = store.token; }catch(_){}
+function trimTokens(){ var keys=Object.keys(store.tokens); while(keys.length>12)delete store.tokens[keys.shift()]; }
 function save(){ try{ localStorage.setItem(LS, JSON.stringify(store)); }catch(_){} }
 function guessName(){
   var ua = navigator.userAgent || '';
@@ -442,7 +445,7 @@ function buzz(){ try{ if(navigator.vibrate) navigator.vibrate(8); }catch(_){} }
 function cmsg(text, kind){ var e = $('cmsg'); e.textContent = text || ''; e.className = 'msg' + (kind ? ' ' + kind : ''); if(kind === 'err'){ var c = $('code'); c.classList.remove('shake'); void c.offsetWidth; c.classList.add('shake'); try{ if(navigator.vibrate) navigator.vibrate([20, 40, 20]); }catch(_){} } }
 function showScreen(main){ $('connect').hidden = main; $('main').hidden = !main; }
 function fmt(s){ s = Math.max(0, Math.floor(+s || 0)); var h = Math.floor(s / 3600), m = Math.floor(s % 3600 / 60), x = s % 60; return (h ? h + ':' + ('0' + m).slice(-2) : m) + ':' + ('0' + x).slice(-2); }
-function pretty(c){ return c ? c.slice(0, 3) + '-' + c.slice(3) : ''; }
+function pretty(c){return c&&c.length>3?c.slice(0,3)+'-'+c.slice(3):(c||'');}
 function normCode(v){ return String(v || '').toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 6); }
 function slimT(t){ return {id: t.id, title: t.title, sub: t.sub, dur: t.dur, thumb: thumbOf(t)}; }
 function thumbOf(t){
@@ -483,119 +486,121 @@ function loadArt(url){
 }
 
 /* ---------------- connection ---------------- */
+/* Each attempt owns every callback and timer. User edits invalidate it. */
+var resumeCode='',attempt=0,activeCode='', bootT = 0, probeT = 0, caps = [], cmdSeq = 0, pendingCmd = {}, remoteName = 'Amber';
+function connectButton(){
+  $('go').disabled = false;
+  $('go').textContent = want && (phase === 'connecting' || phase === 'waiting' || phase === 'reconnecting') ? 'Cancel' : 'Connect';
+}
+function clearCommands(){
+  Object.keys(pendingCmd).forEach(function(id){ clearTimeout(pendingCmd[id].timer); });
+  pendingCmd = {}; OV = {}; UI.lastSet = {}; UI.seekDrag = false;
+}
+function freeze(){ D.pos.pos = posNow(); D.pos.at = performance.now(); D.pos.pl = false; document.body.classList.remove('playing'); }
+function resetRemote(){
+  freeze(); clearCommands(); closeSheet(); clearTimeout(UI.sT); UI.searchRid++; UI.search = null;
+  D = {st:null,pads:[],q:{i:-1,items:[]},lib:{liked:[],recent:[]},pos:{pos:0,tot:0,pl:false,at:0}};
+  qSig = ''; padSig = ''; lvSig = ''; UI.filter = ''; $('q-filter').value = '';
+  renderSearch(); renderQueueTab(); renderPads(); loadArt(''); caps = [];
+  if(MS.on && navigator.mediaSession) msUnbind();
+}
 function setPhase(p){
   phase = p; document.body.classList.toggle('off', p !== 'online');
-  var pill = $('pill'), tx = $('pilltx');
-  pill.className = 'pill' + (p === 'online' ? ' ok' : (p === 'failed' ? ' bad' : ''));
-  tx.textContent = p === 'online' ? 'Connected' : p === 'waiting' ? 'Waiting for PC' : p === 'reconnecting' ? 'Reconnecting' : p === 'failed' ? 'Disconnected \u00b7 tap' : 'Connecting';
+  $('pill').className = 'pill' + (p === 'online' ? ' ok' : p === 'failed' ? ' bad' : '');
+  $('pilltx').textContent = ({online:'Connected',waiting:'Waiting for PC',reconnecting:'Reconnecting',failed:'Disconnected · tap',idle:'Disconnected'})[p] || 'Connecting';
+  $('main').setAttribute('aria-busy', p !== 'online' ? 'true' : 'false');
+  connectButton();
 }
 function banner(text, bad){
-  var b = $('banner'); b.hidden = !text; b.textContent = text || ''; b.className = 'banner' + (bad ? ' bad' : '');
-  if(text && bad && want){ var r = document.createElement('button'); r.type = 'button'; r.className = 'bretry'; r.textContent = 'Retry now'; r.onclick = function(){ retries = 0; clearTimeout(retryT); connect(store.code, true); }; b.appendChild(r); }
+  var b=$('banner');b.hidden=!text;b.textContent=text||'';b.className='banner'+(bad?' bad':'');
+  if(text && bad && want){var r=document.createElement('button');r.type='button';r.className='bretry';r.textContent='Retry now';r.onclick=function(){retries=0;connect(activeCode,true);};b.appendChild(r);}
 }
-function clearTimers(){ clearTimeout(retryT); clearTimeout(openT); clearInterval(hbT); hbT = 0; }
-function teardown(){ clearTimers(); dropConn(); dropPeer(); }
-function send(m){ try{ if(conn && conn.open){ conn.send(m); return true; } }catch(_){} return false; }
-function cmd(a, o){ var m = {t: 'c', a: a}; if(o) for(var k in o) m[k] = o[k]; return send(m); }
-
-function connect(code, silent){
-  code = normCode(code);
-  if(!CODE_RE.test(code)){ cmsg('Enter the 6-character code from Amber (it never uses 0, 1, I or O).', 'err'); return; }
-  if(!window.Peer){ cmsg('Could not load the connection library. Check your internet and reload.', 'err'); return; }
-  store.code = code; save(); want = true; teardown();
-  if(!silent){ cmsg(''); }
-  if(navigator.onLine === false){
-    if(UI.online){ setPhase('reconnecting'); banner('No internet on this phone. Waiting for it to come back\u2026', true); }
-    else { want = false; setPhase('failed'); toConnect('This phone has no internet right now. Turn on Wi-Fi or mobile data, then press Connect.', 'err'); }
-    return;
+function clearTimers(){clearTimeout(retryT);clearTimeout(openT);clearTimeout(probeT);clearTimeout(bootT);clearTimeout(syncT);clearInterval(hbT);hbT=0;}
+function teardown(){++attempt;clearTimers();dropConn();dropPeer();clearCommands();}
+function send(m){try{if(conn&&conn.open){conn.send(m);return true;}}catch(_){}return false;}
+function cmd(a,o,success){
+  if(!UI.online||phase!=='online'){if(success)toast('Not connected to Amber');return false;}
+  var m={t:'c',a:a};if(o)Object.keys(o).forEach(function(k){m[k]=o[k];});
+  if(caps.indexOf('ack')>=0 && a!=='search'){
+    m.cid=String(++cmdSeq);var cid=m.cid, gen=attempt;
+    pendingCmd[cid]={success:success,timer:setTimeout(function(){
+      if(gen!==attempt||!pendingCmd[cid])return;delete pendingCmd[cid];clearCommands();renderState();send({t:'sync'});toast('PC has not confirmed the action. Check the connection; it was not resent.');
+    },7000)};
   }
-  setPhase(UI.online ? 'reconnecting' : 'connecting');
-  $('go').disabled = true; $('go').innerHTML = '<span class="spin"></span> Connecting';
-  var p;
-  try{ p = new window.Peer({config: ICE, debug: 0}); }catch(e){ return failConn('Could not start the connection.'); }
-  peer = p;
-  openT = setTimeout(function(){ if(peer === p && phase !== 'online' && phase !== 'waiting') later('Taking too long to reach Amber.'); }, 22000);
-  p.on('open', function(){
-    if(peer !== p) return;
-    var c = p.connect(PREFIX + code, {reliable: true});
-    conn = c;
-    c.on('open', function(){ if(conn !== c) return; send({t: 'hello', name: store.name, token: store.token || undefined}); });
-    c.on('data', function(m){ if(conn === c) try{ handle(m); }catch(e){ if(window.console) console.error(e); } });
-    c.on('close', function(){ if(conn === c){ conn = null; if(want) later(); } });
-    c.on('error', function(){ if(conn === c){ conn = null; if(want) later(); } });
+  if(!send(m)){if(m.cid){clearTimeout(pendingCmd[m.cid].timer);delete pendingCmd[m.cid];}return false;}
+  if(!m.cid&&success)toast('Sent to PC');
+  return true;
+}
+function cancelAttempt(text){
+  want=false;send({t:'bye'});teardown();freeze();UI.online=false;setPhase('idle');showScreen(false);banner('');cmsg(text||'');
+}
+function connect(code,silent){
+  code=normCode(code);
+  if(!CODE_RE.test(code)){cmsg('Enter the 6-character code from Amber (no 0, 1, I or O).','err');return;}
+  if(!window.Peer){cmsg('Connection library unavailable. Reload after checking your internet.','err');return;}
+  var changed=activeCode && activeCode!==code;
+  if(changed){send({t:'bye'});UI.online=false;resetRemote();}
+  teardown();activeCode=code;store.code=code;save();want=true;
+  var gen=attempt;freeze();retryT=0;
+  if(navigator.onLine===false){failConn('No internet on this phone. Turn on Wi-Fi or mobile data, then press Connect.');return;}
+  setPhase(UI.online?'reconnecting':'connecting');
+  if(!silent)cmsg('Connecting to '+pretty(code)+'… You can cancel or enter another code.');
+  var p;try{p=new window.Peer({config:ICE,debug:0});}catch(_){failConn('Could not start the connection.');return;}peer=p;
+  openT=setTimeout(function(){if(attempt===gen)later('Taking too long to reach Amber.');},18000);
+  p.on('open',function(){
+    if(attempt!==gen||peer!==p)return;
+    var c;try{c=p.connect(PREFIX+code,{reliable:true});}catch(_){later('Could not open the connection.');return;}conn=c;
+    c.on('open',function(){if(attempt!==gen||conn!==c)return;send({t:'hello',name:store.name,token:store.tokens[code]||undefined,v:2});});
+    c.on('data',function(m){if(attempt===gen&&conn===c)try{handle(m);}catch(e){console.error(e);}});
+    c.on('close',function(){if(attempt===gen&&conn===c){conn=null;if(want)later();}});
+    c.on('error',function(){if(attempt===gen&&conn===c){conn=null;if(want)later();}});
   });
-  p.on('disconnected', function(){ if(peer === p && !p.destroyed){ try{ p.reconnect(); }catch(_){} } });
-  p.on('error', function(e){
-    if(peer !== p) return;
-    var t = e && e.type;
-    if(t === 'peer-unavailable'){ later('Can\u2019t find Amber with that code. Is Amber open with Phone remote on?', true); return; }
-    later();
-  });
+  p.on('close',function(){if(attempt===gen&&peer===p&&want)later();});
+  p.on('disconnected',function(){if(attempt!==gen||peer!==p)return;if(conn&&conn.open){try{if(p.disconnected&&!p.destroyed)p.reconnect();}catch(_){} }else later('Pairing service disconnected.');});
+  p.on('error',function(e){if(attempt!==gen||peer!==p)return;later(e&&e.type==='peer-unavailable'?'Cannot find Amber with that code. Check the latest code on your PC.':'Connection failed. Check the PC and internet.',e&&e.type==='peer-unavailable');});
 }
-function failConn(text){ want = false; teardown(); setPhase('failed'); toConnect(text, 'err'); }
-function later(why, notFound){
-  if(!want) return;
-  clearTimeout(retryT); clearTimeout(openT);
-  var first = !UI.online && retries === 0;
-  dropConn(); dropPeer();
-  retries++;
-  if(!UI.online && (retries >= 4 || (notFound && retries >= 2))){
-    want = false; setPhase('failed');
-    toConnect(why || 'Could not reach Amber. Check that it is open on your PC and Phone remote is on.', 'err'); return;
-  }
-  setPhase(UI.online ? 'reconnecting' : 'connecting');
-  if(UI.online) banner(notFound ? 'Can\u2019t find Amber. Is it open on your PC?' : 'Connection lost. Trying again\u2026', true);
-  var wait = Math.min(10000, 1200 * Math.pow(1.7, retries - 1));
-  retryT = setTimeout(function(){ if(want) connect(store.code, true); }, first ? 600 : wait);
+function failConn(text){want=false;teardown();freeze();setPhase('failed');toConnect(text,'err');}
+function later(why,notFound){
+  if(!want)return;freeze();teardown();++retries;
+  if(retries>=4||(notFound&&retries>=2)){failConn(why||'Could not reach Amber. You can retry or enter a new code.');return;}
+  setPhase(UI.online?'reconnecting':'connecting');
+  if(UI.online)banner(why||'Connection lost. Trying again…',true);else cmsg((why||'Connection lost.')+' Retrying '+retries+'/3. You can cancel or change the code.');
+  var gen=attempt, code=activeCode;
+  retryT=setTimeout(function(){if(want&&attempt===gen)connect(code,true);},Math.min(8000,1200*Math.pow(1.7,retries-1)));
 }
-function toConnect(text, kind){
-  UI.online = false; clearTimers(); showScreen(false); banner('');
-  $('go').disabled = false; $('go').textContent = 'Connect';
-  if(store.code) $('code').value = pretty(store.code);
-  cmsg(text || '', kind);
-}
+function toConnect(text,kind){UI.online=false;showScreen(false);banner('');connectButton();cmsg(text||'',kind);}
 function startHeartbeat(){
-  clearInterval(hbT); lastPong = Date.now();
-  hbT = setInterval(function(){
-    if(!conn || !conn.open) return;
-    if(Date.now() - lastPong > 14000){ dropConn(); later(); return; }
-    send({t: 'ping', n: ++pingN});
-  }, 4000);
+  clearInterval(hbT);lastPong=Date.now();var gen=attempt;
+  hbT=setInterval(function(){if(attempt!==gen||!want)return;if(!conn||!conn.open||Date.now()-lastPong>14000){later('PC stopped answering.');return;}send({t:'ping',n:++pingN});},4000);
 }
 function handle(m){
-  if(!m || typeof m !== 'object') return;
+  if(!m||typeof m!=='object')return;
   switch(m.t){
-    case 'wait': setPhase('waiting'); cmsg('Look at your PC and press Allow\u2026'); if(UI.online) banner('Waiting for you to press Allow on your PC\u2026'); clearTimeout(openT); openT = setTimeout(function(){ if(phase === 'waiting') failConn('No answer from your PC. Press Connect and then Allow in Amber.'); }, 90000); break;
+    case 'wait':setPhase('waiting');cmsg('Press Allow on your PC. Cancel stays available.');if(UI.online)banner('Waiting for Allow on your PC…');clearTimeout(openT);var gen=attempt;openT=setTimeout(function(){if(attempt===gen&&phase==='waiting')failConn('No answer from your PC. Press Connect and then Allow.');},65000);break;
     case 'welcome':
-      if(typeof m.token === 'string' && m.token){ store.token = m.token; }
-      save(); retries = 0; clearTimeout(openT);
-      UI.online = true; setPhase('online'); banner('');
-      $('go').disabled = false; $('go').textContent = 'Connect';
-      showScreen(true); switchTab(UI.tab); startHeartbeat(); buzz();
-      break;
-    case 'denied': {
-      want = false; teardown(); setPhase('failed');
-      var why = m.why;
-      toConnect(why === 'no' ? 'Your PC said no. Press Connect to ask again.' : why === 'busy' ? 'Amber is busy with another phone. Try again in a moment.' : why === 'timeout' ? 'No answer on the PC. Press Connect and then Allow on your PC.' : 'Amber did not accept this connection.', 'err');
-      break;
-    }
-    case 'revoked':
-      want = false; teardown(); store.token = ''; save(); setPhase('failed');
-      toConnect('This phone was removed in Amber. Connect again to ask for access.', 'err'); break;
+      if(typeof m.token==='string'&&m.token.length>=32&&m.token.length<=80){store.tokens[activeCode]=m.token;store.token=m.token;trimTokens();}save();
+      caps=Array.isArray(m.caps)?m.caps:[];remoteName=typeof m.app==='string'?m.app.slice(0,40):'Amber';
+      $('connected-to').textContent=remoteName+' · '+pretty(activeCode);retries=0;clearTimeout(openT);UI.online=true;setPhase('online');banner('');showScreen(true);switchTab(UI.tab);startHeartbeat();if(MS.on)msBind();buzz();break;
+    case 'ack':
+      var pc=pendingCmd[m.cid];if(!pc)return;clearTimeout(pc.timer);delete pendingCmd[m.cid];
+      if(m.ok===false){OV={};UI.lastSet={};renderState();toast(m.error||'PC could not apply that action.');send({t:'sync'});}else if(pc.success)toast(typeof m.message==='string'?m.message:pc.success);break;
+    case 'denied':failConn(({no:'PC declined. Press Connect to ask again.',busy:'Another phone is waiting for approval. Try again shortly.',timeout:'Approval timed out. Press Connect and then Allow.'})[m.why]||'PC did not accept this connection.');break;
+    case 'revoked':delete store.tokens[activeCode];store.token='';save();failConn('This phone was removed on the PC. Connect again to ask for access.');break;
     case 'bye':
-      if(m.why === 'newcode'){ want = false; teardown(); store.code = ''; save(); $('code').value = ''; toConnect('Amber made a new code. Type the new one.', 'err'); }
-      else if(m.why === 'off'){ want = false; teardown(); toConnect('Phone remote was turned off in Amber.', 'err'); }
-      else { dropConn(); later(); }
-      break;
-    case 'pong': lastPong = Date.now(); break;
-    case 'st': D.st = m; renderState(); break;
-    case 'pads': D.pads = m.items || []; renderPads(); break;
-    case 'q': D.q = {i: m.i | 0, items: m.items || []}; renderQueueTab(); break;
-    case 'lib': D.lib = {liked: m.liked || [], recent: m.recent || []}; renderQueueTab(); break;
-    case 'pos': D.pos = {pos: +m.pos || 0, tot: +m.tot || 0, pl: !!m.pl, at: performance.now()}; paintSeek(); msUpdate(); break;
-    case 'res': onResult(m); break;
+      if(m.why==='newcode'){cancelAttempt();store.code='';save();$('code').value='';cmsg('PC made a new code. Enter it here.');}
+      else if(m.why==='off'){cancelAttempt('Phone remote was turned off on the PC.');}
+      else later();break;
+    case 'pong':lastPong=Date.now();break;
+    case 'st':D.st=m;renderState();break;
+    case 'pads':D.pads=Array.isArray(m.items)?m.items.filter(function(x){return x&&typeof x.id==='string';}).slice(0,120):[];renderPads();break;
+    case 'q':D.q={i:m.i|0,items:cleanTracks(m.items,300)};renderQueueTab();break;
+    case 'lib':D.lib={liked:cleanTracks(m.liked,300),recent:cleanTracks(m.recent,50)};renderQueueTab();break;
+    case 'pos':D.pos={pos:num(m.pos,0,86400),tot:num(m.tot,0,86400),pl:!!m.pl,at:performance.now()};paintSeek();msUpdate();break;
+    case 'res':onResult(m);break;
   }
 }
+function cleanTracks(list,max){return Array.isArray(list)?list.filter(function(t){return t&&typeof t.id==='string'&&typeof t.title==='string';}).slice(0,max):[];}
+
 
 /* ---------------- tabs ---------------- */
 function switchTab(t){
@@ -608,8 +613,10 @@ function switchTab(t){
 }
 
 /* ---------------- state rendering ---------------- */
+function reportSend(a,o,message){var need=({moveq:'queueTools',clearq:'queueTools',enqueueall:'queueTools',download:'downloads',autoplay:'autoplay'})[a];if(need&&caps.indexOf(need)<0){toast('Update the PC app to use this control');return false;}if(!cmd(a,o,message)){toast('Not connected to Amber');return false;}wantSync();return true;}
+
 function theme(th){
-  if(!th) return; var h = num(th.h, 0, 360), s = num(th.s, 30, 95), l = num(th.l, 40, 66);
+  if(!th||typeof th!=='object')return; var h = num(th.h, 0, 360), s = num(th.s, 30, 95), l = num(th.l, 40, 66);
   var r = document.documentElement.style;
   r.setProperty('--h', h);
   r.setProperty('--accent', 'hsl(' + h + ' ' + s + '% ' + l + '%)');
@@ -619,7 +626,7 @@ function theme(th){
 }
 function setTg(id, on){ var e = $(id); if(!e || recently('tg:' + id, 1200)) return; e.classList.toggle('on', !!on); e.setAttribute('aria-checked', on ? 'true' : 'false'); }
 function renderState(){
-  var st = D.st; if(!st) return; var p = st.p || {}, m = st.m || {};
+  var st = D.st; if(!st||typeof st!=='object')return; var p = st.p || {}, m = st.m || {};
   theme(st.th);
   var pl = effPl(), sh = !!ov('sh', !!p.sh), li = !!ov('li', !!p.li);
   /* player */
@@ -640,6 +647,7 @@ function renderState(){
   $('mi-t').textContent = p.title || ''; $('mi-s').textContent = p.sub || ''; if(url !== miUrl){ miUrl = url; $('mi-th').innerHTML = imgTag(url, false); }
   $('mini').hidden = !(UI.tab !== 'player' && p.has);
   paintSeek();
+  $('remote-download').textContent=p.dl||'';
   /* mic */
   setTg('t-voice', m.voice); setTg('t-song', m.song); setTg('t-hear', m.hear); setTg('t-hp', m.hp);
   setTg('t-duck', m.duck); setTg('t-clean', m.clean); setTg('t-perf', m.perf); setTg('t-ap', m.ap);
@@ -667,7 +675,7 @@ function posNow(){
 function paintSeek(){
   var P = D.pos, st = curP();
   if(UI.seekDrag) return;
-  var tot = P.tot || 0, cur = posNow();
+  var tot = P.tot || 0, cur = posNow();$('p-seek').disabled=!!st.live||!tot||phase!=='online';
   var mb = $('mi-bar'); if(mb) mb.style.width = (tot ? Math.min(100, cur / tot * 100) : 0) + '%';
   var r = $('p-seek'); r.value = tot ? Math.round(cur / tot * 1000) : 0; paintRange(r);
   $('p-cur').textContent = fmt(cur); $('p-tot').textContent = tot ? fmt(tot) : (st.live ? 'LIVE' : (st.dur || '0:00'));
@@ -676,7 +684,7 @@ setInterval(function(){ if(UI.online && D.pos.pl && !document.hidden) paintSeek(
 
 var lvSig = '';
 function renderLevels(lv){
-  var sig = lv.map(function(x){ return x.k + ':' + x.l + ':' + x.min + ':' + x.max; }).join('|');
+  lv=Array.isArray(lv)?lv.filter(function(x){return x&&/^[a-z_]{1,24}$/.test(x.k)&&typeof x.l==='string';}).slice(0,24):[];var sig = lv.map(function(x){ return x.k + ':' + x.l + ':' + x.min + ':' + x.max; }).join('|');
   var box = $('m-lv');
   if(sig !== lvSig){
     lvSig = sig;
@@ -710,22 +718,23 @@ function renderPads(){
 function rowHtml(t, i, o){
   var u = thumbOf(t);
   return '<div class="row' + (o.cur ? ' cur' : '') + (o.an ? ' an' : '') + '" style="--n:' + Math.min(i, 14) + '" data-i="' + i + '" role="button" tabindex="0"><div class="th">' + imgTag(u, false) + '<span class="eq"><i></i><i></i><i></i></span></div><div class="tx"><b>' + esc(t.title) + '</b><span>' + esc(t.sub || '') + '</span></div>' + (t.dur ? '<span class="du">' + esc(t.dur) + '</span>' : '') +
-    (o.rm ? '<button class="ibtn" data-rm="' + i + '" type="button" aria-label="Remove from queue">' + IC.x + '</button>' : '<button class="ibtn" data-qa="' + i + '" type="button" aria-label="Add to queue">' + IC.add + '</button><button class="ibtn" data-more="' + i + '" type="button" aria-label="More">' + IC.more + '</button>') + '</div>';
+    (o.rm ? '<button class="ibtn" data-qmore="' + i + '" type="button" aria-label="Queue options">' + IC.more + '</button><button class="ibtn" data-rm="' + i + '" type="button" aria-label="Remove from queue">' + IC.x + '</button>' : '<button class="ibtn" data-qa="' + i + '" type="button" aria-label="Add to queue">' + IC.add + '</button><button class="ibtn" data-more="' + i + '" type="button" aria-label="More">' + IC.more + '</button>') + '</div>';
 }
 function listFor(k){ return k === 'queue' ? D.q.items : (k === 'liked' ? D.lib.liked : D.lib.recent); }
 var qSig = '';
 function renderQueueTab(scroll){
   qa('#q-seg button').forEach(function(b){ b.classList.toggle('on', b.dataset.q === UI.qtab); });
-  var items = listFor(UI.qtab) || [], out = $('q-out');
+  var items=listFor(UI.qtab)||[],out=$('q-out');$('q-clear-remote').hidden=UI.qtab!=='queue'||caps.indexOf('queueTools')<0;$('q-clear-remote').disabled=!items.length;var rows=items.map(function(t,i){return {t:t,i:i};}).filter(function(x){return !UI.filter||(x.t.title+' '+(x.t.sub||'')).toLowerCase().indexOf(UI.filter)>=0;});
   $('q-acts').hidden = UI.qtab === 'queue' || !items.length;
-  var sig = UI.qtab + '|' + items.slice(0, 200).map(function(t){ return t.id + ':' + t.title; }).join('|');
+  var sig=UI.qtab+'|'+(UI.filter||'')+'|'+JSON.stringify(items);
   if(!scroll && sig === qSig){ if(UI.qtab === 'queue') markCur(); return; }     /* nothing changed: don't rebuild (no flicker, keeps scroll) */
   qSig = sig;
   var keep = out.parentNode.scrollTop;
+  if(!rows.length&&items.length){out.innerHTML='<div class="empty">No matching tracks.</div>';return;}
   if(!items.length){
     out.innerHTML = '<div class="empty">' + IC.music + '<div>' + (UI.qtab === 'queue' ? 'The queue is empty.' : UI.qtab === 'liked' ? 'No liked songs yet.' : 'Nothing played recently.') + '</div></div>'; return;
   }
-  out.innerHTML = '<div class="h2">' + (UI.qtab === 'queue' ? 'Up next' : UI.qtab === 'liked' ? 'Liked songs' : 'Recently played') + ' \u00b7 ' + items.length + (items.length === 1 ? ' song' : ' songs') + '</div>' + items.slice(0, 200).map(function(t, i){ return rowHtml(t, i, {cur: UI.qtab === 'queue' && i === D.q.i, rm: UI.qtab === 'queue', an: !!scroll}); }).join('');
+  out.innerHTML = '<div class="h2">' + (UI.qtab === 'queue' ? 'Up next' : UI.qtab === 'liked' ? 'Liked songs' : 'Recently played') + ' \u00b7 ' + items.length + (items.length === 1 ? ' song' : ' songs') + '</div>' + rows.slice(0,300).map(function(x){var t=x.t,i=x.i;return rowHtml(t,i, {cur: UI.qtab === 'queue' && i === D.q.i, rm: UI.qtab === 'queue', an: !!scroll}); }).join('');
   if(scroll && UI.qtab === 'queue'){ var c = out.querySelector('.row.cur'); if(c) c.scrollIntoView({block: 'center'}); }
   else out.parentNode.scrollTop = keep;
 }
@@ -734,22 +743,22 @@ function markCur(){ qa('#q-out .row').forEach(function(r){ r.classList.toggle('c
 /* ---------------- search ---------------- */
 function doSearch(){
   var q = $('s-q').value.trim(); if(!q) return; addRecent(q);
-  var rid = ++UI.searchRid; UI.search = {rid: rid, loading: true, items: [], kind: 'search'};
+  var rid = ++UI.searchRid;clearTimeout(UI.sT); UI.search = {rid: rid, loading: true, items: [], kind: 'search'};
   renderSearch();
   if(!cmd('search', {q: q, rid: rid})){ UI.search = {rid: rid, err: 'Not connected to Amber.'}; renderSearch(); return; }
   clearTimeout(UI.sT); UI.sT = setTimeout(function(){ if(UI.search && UI.search.loading && UI.search.rid === rid){ UI.search = {rid: rid, err: 'Amber took too long to answer. Check that it is open, then try again.'}; renderSearch(); } }, 25000);
   try{ $('s-q').blur(); }catch(_){}
 }
 function onResult(m){
-  if((m.rid | 0) !== UI.searchRid) return; clearTimeout(UI.sT);
-  UI.search = m.err ? {rid: m.rid, err: m.err} : {rid: m.rid, kind: m.kind, title: m.title, items: m.items || []};
+  if(!UI.online||!UI.search||!UI.search.loading||(m.rid | 0)!==UI.searchRid)return; clearTimeout(UI.sT);
+  UI.search = m.err ? {rid: m.rid, err: m.err} : {rid: m.rid, kind: m.kind, title: m.title, items: cleanTracks(m.items,100)};
   renderSearch();
 }
 function renderSearch(){
   var s = UI.search, out = $('s-out');
   if(!s){ out.innerHTML = emptySearch(); return; }
   if(s.loading){ out.innerHTML = '<div class="h2">Searching on your PC\u2026</div>' + [0,1,2,3,4,5].map(function(n){ return '<div class="sk" style="opacity:' + (1 - n * .13) + '"><i class="a"></i><div style="flex:1"><i class="b"></i><i class="c"></i></div></div>'; }).join(''); return; }
-  if(s.err){ out.innerHTML = '<div class="empty"><div>' + esc(s.err) + '</div></div>'; return; }
+  if(s.err){out.innerHTML='<div class="empty"><div>'+esc(s.err)+'</div><button class="btn" id="search-retry" type="button">Retry search</button></div>';return;}
   if(!s.items.length){ out.innerHTML = '<div class="empty"><div>Nothing found. Try different words.</div></div>'; return; }
   var head = '';
   if(s.kind === 'playlist' || s.kind === 'channel') head = '<div class="h2">' + esc(s.title || (s.kind === 'playlist' ? 'Playlist' : 'Channel')) + ' \u00b7 ' + s.items.length + '</div><div class="acts"><button class="btn" data-sp="all" type="button">Play all</button><button class="btn ghost" data-sp="shuffle" type="button">Shuffle</button><button class="btn ghost" data-sp="queue" type="button">Add to queue</button></div>';
@@ -778,27 +787,33 @@ function closeSheet(){ var s = $('sheet'); if(s){ s.remove(); try{ if(sheetFrom 
 function trackSheet(t){
   var tr = slimT(t);
   openSheet(t.title, [
-    {label: 'Play now', icon: IC.now, fn: function(){ cmd('play', {mode: 'now', tr: tr}); toast('Playing'); }},
-    {label: 'Play next', icon: IC.next, fn: function(){ cmd('play', {mode: 'next', tr: tr}); toast('Playing next'); }},
-    {label: 'Add to queue', icon: IC.add, fn: function(){ cmd('play', {mode: 'queue', tr: tr}); toast('Added to queue'); }}
+    {label: 'Play now', icon: IC.now, fn: function(){ reportSend('play',{mode:'now',tr:tr},'Playback requested'); }},
+    {label: 'Play next', icon: IC.next, fn: function(){ reportSend('play',{mode:'next',tr:tr},'Playing next'); }},
+    {label: 'Add to queue', icon: IC.add, fn: function(){ reportSend('play',{mode:'queue',tr:tr},'Added to queue'); }}
   ], tr.thumb);
 }
 function leave(forget){
-  want = false; send({t: 'bye'}); var c = conn, p = peer;
-  clearTimers(); setPhase('failed'); UI.online = false;
-  if(forget){ store.token = ''; store.code = ''; save(); $('code').value = ''; }
-  toConnect(forget ? 'Forgotten. Ask Amber for access again with a code.' : 'Disconnected. Press Connect to join again.');
-  setTimeout(function(){ if(conn === c) conn = null; if(peer === p) peer = null; try{ if(c) c.close(); }catch(_){} try{ if(p) p.destroy(); }catch(_){} }, 200);
+  var code=activeCode||store.code;cancelAttempt();
+  if(forget){delete store.tokens[code];store.token='';store.code='';store.auto=false;$('auto-connect').checked=false;$('code').value='';save();resetRemote();}
+  else {$('code').value=pretty(store.code);}
+  if(wake){try{wake.release();}catch(_){}wake=null;paintWake();}
+  if(MS.on){try{MS.audio.pause();}catch(_){}msUnbind();}
+  toConnect(forget?'Saved access for this code was removed. Connect again to request access.':'Disconnected. Enter a new code or press Connect.');
 }
 function menuSheet(){
-  openSheet('Amber Remote', [
-    {label: 'Keep screen on', icon: IC.wake, state: wantWake ? 'On' : 'Off', fn: toggleWake},
-    {label: 'Lock-screen controls', icon: IC.lock, state: MS.on ? 'On' : 'Off', fn: toggleMS},
-    {label: 'Disconnect', icon: IC.out, fn: function(){ leave(false); }},
-    {label: 'Forget this phone', icon: IC.trash, danger: true, fn: function(){ leave(true); }}
+  openSheet(remoteName+' Remote',[
+    {label:'Download current song on PC',icon:IC.music,fn:function(){reportSend('download',null,'Download requested on PC');}},
+    {label:'Copy current song link',icon:IC.music,fn:function(){var p=curP();if(!p.has||!p.id){toast('No song selected');return;}var url='https://www.youtube.com/watch?v='+encodeURIComponent(p.id);if(navigator.clipboard&&navigator.clipboard.writeText)navigator.clipboard.writeText(url).then(function(){toast('Song link copied');},function(){toast('Clipboard unavailable. Copy the link from the PC.');});else toast('Clipboard unavailable in this browser.');}},
+    {label:'Autoplay related songs',state:curP().au?'On':'Off',fn:function(){reportSend('autoplay',{on:!curP().au},'Autoplay updated');}},
+    {label:'Refresh from PC',icon:IC.check,fn:function(){if(UI.online&&phase==='online'){send({t:'sync'});toast('Refresh requested');}else toast('Connect to refresh');}},
+    {label:'Change PC / code',icon:IC.out,fn:function(){leave(false);$('code').focus();$('code').select();}},
+    {label:'Reconnect on reopen',state:store.auto?'On':'Off',fn:function(){store.auto=!store.auto;$('auto-connect').checked=store.auto;save();toast(store.auto?'Reconnect on reopen enabled':'Reconnect on reopen disabled');}},
+    {label:'Keep screen on',icon:IC.wake,state:wantWake?'On':'Off',fn:toggleWake},
+    {label:'Lock-screen controls',icon:IC.lock,state:MS.on?'On':'Off',fn:toggleMS},
+    {label:'Disconnect',icon:IC.out,fn:function(){leave(false);}},
+    {label:'Forget this PC code',icon:IC.trash,danger:true,fn:function(){leave(true);}}
   ]);
 }
-
 /* ---------------- keep screen on ---------------- */
 function paintWake(){ $('wk').classList.toggle('on', !!wake); $('wk').setAttribute('aria-pressed', wake ? 'true' : 'false'); }
 function getWake(quiet){
@@ -824,8 +839,8 @@ function silentWav(){
 }
 function msBind(){
   var ms = navigator.mediaSession, set = function(n, f){ try{ ms.setActionHandler(n, f); }catch(_){} };
-  set('play', function(){ if(!effPl()) act('toggle'); });
-  set('pause', function(){ if(effPl()) act('toggle'); });
+  set('play',function(){act(caps.indexOf('desiredPlayback')>=0?'play':(!effPl()?'toggle':'syncnoop'));});
+  set('pause',function(){act(caps.indexOf('desiredPlayback')>=0?'pause':(effPl()?'toggle':'syncnoop'));});
   set('previoustrack', function(){ act('prev'); });
   set('nexttrack', function(){ act('next'); });
   set('seekbackward', function(){ act('skip', {s: -10}); });
@@ -861,45 +876,46 @@ function msUpdate(){
 /* ---------------- resume / network ---------------- */
 function wantSync(){ clearTimeout(syncT); syncT = setTimeout(function(){ send({t: 'sync'}); }, 1300); }
 function probe(){
-  if(!want) return;
-  if(!conn || !conn.open){ clearTimeout(retryT); retryT = setTimeout(function(){ if(want) connect(store.code, true); }, 150); return; }
-  var t0 = lastPong; send({t: 'sync'}); send({t: 'ping', n: ++pingN});
-  setTimeout(function(){ if(want && UI.online && conn && conn.open && lastPong === t0){ dropConn(); later(); } }, 3500);
+  if(!want)return;
+  if(!conn||!conn.open){if(!retryT&&phase!=='connecting'&&phase!=='waiting')connect(activeCode,true);return;}
+  var gen=attempt,c=conn,t0=lastPong;send({t:'sync'});send({t:'ping',n:++pingN});clearTimeout(probeT);
+  probeT=setTimeout(function(){if(want&&attempt===gen&&conn===c&&phase==='online'&&lastPong===t0)later('PC did not answer after resume.');},5000);
 }
-document.addEventListener('visibilitychange', function(){
-  if(document.hidden) return;
-  if(wantWake && !wake) getWake(true);
-  if(MS.on && MS.audio && MS.audio.paused) try{ MS.audio.play(); }catch(_){}
-  if(UI.online) probe();
-});
-window.addEventListener('pageshow', function(e){ if(e.persisted && UI.online) probe(); });
-window.addEventListener('online', function(){ if(want && (!conn || !conn.open)){ clearTimeout(retryT); retryT = setTimeout(function(){ if(want) connect(store.code, true); }, 300); } });
-window.addEventListener('offline', function(){ if(UI.online) banner('No internet on this phone. Waiting for it to come back\u2026', true); });
+document.addEventListener('visibilitychange',function(){if(document.hidden)return;if(wantWake&&UI.online&&!wake)getWake(true);if(MS.on&&UI.online&&MS.audio&&MS.audio.paused)try{MS.audio.play();}catch(_){}if(want)probe();});
+window.addEventListener('pageshow',function(e){if(e.persisted&&resumeCode){var code=resumeCode;resumeCode='';retries=0;connect(code,true);}else if(e.persisted&&want)probe();});
+window.addEventListener('online',function(){if(want&&(!conn||!conn.open)){retries=0;connect(activeCode,true);}});
+window.addEventListener('offline',function(){if(want){freeze();teardown();setPhase('reconnecting');if(UI.online)banner('No internet. Controls resume when it returns.',true);else cmsg('No internet. Cancel or connect again when it returns.');}});
+window.addEventListener('pagehide',function(){resumeCode=want?activeCode:'';if(conn)send({t:'bye'});want=false;teardown();freeze();setPhase('idle');});
 window.addEventListener('error', function(e){ if(window.console) console.error(e.error || e.message); });
 window.addEventListener('unhandledrejection', function(e){ if(window.console) console.error(e.reason); });
-document.addEventListener('keydown', function(e){ if(e.key === 'Escape') closeSheet(); });
+document.addEventListener('keydown',function(e){if(e.key==='Escape')closeSheet();var sh=$('sheet');if(e.key==='Tab'&&sh){var fs=qa('button',sh),first=fs[0],last=fs[fs.length-1];if(fs.length&&((e.shiftKey&&document.activeElement===first)||(!e.shiftKey&&document.activeElement===last))){e.preventDefault();(e.shiftKey?last:first).focus();}}});
 
 /* ---------------- actions (instant feedback, then the PC confirms) ---------------- */
 var lastSend = {};
 function throttled(key, fn, ms){ var n = Date.now(); if(n - (lastSend[key] || 0) >= (ms || 70)){ lastSend[key] = n; fn(); return true; } return false; }
-function act(a, o){
-  var p = curP(), prev = {pl: OV.pl, sh: OV.sh, li: OV.li};
+function act(a,o){if(a==='syncnoop')return true;
+  var p = curP(), oldPos = Object.assign({},D.pos), prev = {pl: OV.pl, sh: OV.sh, li: OV.li};
   if(a === 'toggle'){ var v = !effPl(); setOv('pl', v); D.pos = {pos: posNow(), tot: D.pos.tot, pl: v, at: performance.now()}; }
+  else if(a === 'play' || a === 'pause'){ var pv = a === 'play'; setOv('pl',pv); D.pos={pos:posNow(),tot:D.pos.tot,pl:pv,at:performance.now()}; }
   else if(a === 'shuffle') setOv('sh', !ov('sh', !!p.sh));
   else if(a === 'like'){ setOv('li', !ov('li', !!p.li)); }
   if(!cmd(a, o)){
-    OV.pl = prev.pl; OV.sh = prev.sh; OV.li = prev.li;
+    D.pos=oldPos; OV.pl = prev.pl; OV.sh = prev.sh; OV.li = prev.li;
     if(!OV.pl) delete OV.pl; if(!OV.sh) delete OV.sh; if(!OV.li) delete OV.li;
     toast('Not connected to Amber'); return false;
   }
-  if(a === 'toggle' || a === 'shuffle' || a === 'like'){ renderState(); }
+  if(a === 'toggle' || a === 'play' || a === 'pause' || a === 'shuffle' || a === 'like'){ renderState(); }
   wantSync(); return true;
 }
 
 /* ---------------- events ---------------- */
-$('code').addEventListener('input', function(e){ var raw = e.target.value, hi = raw.indexOf('#'); if(hi >= 0) raw = raw.slice(hi + 1); var v = normCode(raw); e.target.value = v.length > 3 ? v.slice(0, 3) + '-' + v.slice(3) : v; });
-$('code').addEventListener('keydown', function(e){ if(e.key === 'Enter') $('go').click(); });
-$('go').addEventListener('click', function(){ retries = 0; connect($('code').value); });
+$('code').addEventListener('input',function(e){var raw=e.target.value,hi=raw.indexOf('#');if(hi>=0)raw=raw.slice(hi+1);var v=normCode(raw);e.target.value=pretty(v);clearTimeout(bootT);if(want&&v!==activeCode)cancelAttempt('Code changed. Press Connect to join this PC.');});
+$('code').addEventListener('keydown',function(e){if(e.key==='Enter'){e.preventDefault();$('go').click();}});
+$('go').addEventListener('click',function(){if(want&&phase!=='online')cancelAttempt('Connection cancelled. Enter a code and press Connect.');else{retries=0;connect($('code').value);}});
+$('auto-connect').checked=store.auto;
+$('auto-connect').addEventListener('change',function(){store.auto=this.checked;save();});
+$('q-filter').addEventListener('input',function(){UI.filter=this.value.trim().toLowerCase();renderQueueTab(true);});
+$('q-clear-remote').addEventListener('click',function(){if(!D.q.items.length)return;var clearIds=D.q.items.map(function(t){return t.id;});openSheet('Clear the queue?',[{label:'Clear '+D.q.items.length+' tracks',danger:true,icon:IC.trash,fn:function(){reportSend('clearq',{ids:clearIds},'Queue cleared');}}]);});
 $('pname').addEventListener('change', function(e){ var v = e.target.value.replace(/[<>\u0000-\u001f]/g, '').trim().slice(0, 24) || guessName(); store.name = v; e.target.value = v; save(); });
 $('menu').addEventListener('click', menuSheet);
 $('pill').addEventListener('click', function(){ if(phase === 'failed' && store.code){ retries = 0; clearTimeout(retryT); if(UI.online){ connect(store.code, true); } else { showScreen(false); connect(store.code); } } });
@@ -922,17 +938,17 @@ document.addEventListener('click', function(e){
     if(a === 'stopall'){ if(act(a, o)) toast('Stopped'); return; }
     act(a, o); return;
   }
-  var pad = e.target.closest('.pad'); if(pad){ buzz(); if(!cmd('pad', {id: pad.dataset.id})) toast('Not connected to Amber'); pad.classList.add('hit'); setTimeout(function(){ pad.classList.remove('hit'); }, 220); wantSync(); return; }
-  var md = e.target.closest('#m-mode [data-m]'); if(md){ buzz(); cmd('mode', {m: md.dataset.m}); wantSync(); qa('#m-mode button').forEach(function(b){ b.classList.toggle('on', b === md); }); return; }
+  var pad = e.target.closest('.pad'); if(pad){ buzz(); if(!cmd('pad',{id:pad.dataset.id})){toast('Not connected to Amber');return;}pad.classList.add('hit'); setTimeout(function(){ pad.classList.remove('hit'); }, 220); wantSync(); return; }
+  var md = e.target.closest('#m-mode [data-m]'); if(md){ buzz(); if(!reportSend('mode',{m:md.dataset.m}))return; wantSync(); qa('#m-mode button').forEach(function(b){ b.classList.toggle('on', b === md); }); return; }
   var sg = e.target.closest('#q-seg [data-q]'); if(sg){ UI.qtab = sg.dataset.q; renderQueueTab(true); return; }
-  var lb = e.target.closest('[data-lib]'); if(lb){ var src = UI.qtab === 'recent' ? 'recent' : 'liked'; cmd('playlib', {src: src, i: 0, sh: lb.dataset.lib === 'shuffle'}); toast(lb.dataset.lib === 'shuffle' ? 'Shuffling' : 'Playing'); return; }
+  var lb = e.target.closest('[data-lib]'); if(lb){ var src = UI.qtab === 'recent' ? 'recent' : 'liked'; reportSend('playlib',{src:src,i:0,sh:lb.dataset.lib==='shuffle'},'Playback requested'); return; }
   var sp = e.target.closest('[data-sp]'); if(sp && UI.search && UI.search.items){
     var items = UI.search.items.map(slimT);
-    if(sp.dataset.sp === 'queue'){ var cnt = Math.min(items.length, 50); items.slice(0, cnt).forEach(function(tr, i){ setTimeout(function(){ cmd('play', {mode: 'queue', tr: tr}); }, i * 60); }); toast('Adding ' + cnt + ' songs'); return; }
+    if(sp.dataset.sp === 'queue'){ if(caps.indexOf('queueTools')<0){toast('Update the desktop app to add a whole list');return;}reportSend('enqueueall',{items:items},'Tracks added to queue'); return; }
     if(sp.dataset.sp === 'shuffle'){ for(var j = items.length - 1; j > 0; j--){ var k = Math.floor(Math.random() * (j + 1)), x = items[j]; items[j] = items[k]; items[k] = x; } }
-    cmd('playall', {items: items}); toast('Playing'); return;
+    reportSend('playall',{items:items},'Playback requested'); return;
   }
-  var rm = e.target.closest('[data-rm]'); if(rm){ e.stopPropagation(); cmd('rmq', {i: +rm.dataset.rm}); buzz(); return; }
+  var qm=e.target.closest('[data-qmore]');if(qm){var qt=D.q.items[+qm.dataset.qmore];if(qt)openSheet(qt.title,[{label:'Play next',fn:function(){reportSend('play',{mode:'next',tr:slimT(qt)},'Playing next');}},{label:'Move up',fn:function(){reportSend('moveq',{id:qt.id,dir:-1},'Queue updated');}},{label:'Move down',fn:function(){reportSend('moveq',{id:qt.id,dir:1},'Queue updated');}}]);return;}var rm = e.target.closest('[data-rm]'); if(rm){ e.stopPropagation(); var rt=D.q.items[+rm.dataset.rm];if(rt)reportSend('rmq',{i:+rm.dataset.rm,id:rt.id},'Removed from queue'); buzz(); return; }
   var qb = e.target.closest('[data-qa]'); if(qb){
     e.stopPropagation(); var list0 = UI.tab === 'search' ? (UI.search && UI.search.items || []) : listFor(UI.qtab), t0 = list0[+qb.dataset.qa];
     if(t0){ if(cmd('play', {mode: 'queue', tr: slimT(t0)})){ buzz(); toast('Added to queue'); qb.innerHTML = IC.check; qb.classList.add('done'); setTimeout(function(){ if(qb.isConnected){ qb.innerHTML = IC.add; qb.classList.remove('done'); } }, 1400); } else toast('Not connected to Amber'); }
@@ -941,9 +957,9 @@ document.addEventListener('click', function(e){
   var mo = e.target.closest('[data-more]'); if(mo){ e.stopPropagation(); var list = UI.tab === 'search' ? (UI.search && UI.search.items || []) : listFor(UI.qtab); var t = list[+mo.dataset.more]; if(t) trackSheet(t); return; }
   var row = e.target.closest('.row'); if(row){
     var i = +row.dataset.i, inSearch = !!row.closest('#s-out');
-    if(inSearch){ var t2 = UI.search && UI.search.items[i]; if(t2){ cmd('play', {mode: 'now', tr: slimT(t2)}); toast('Playing'); } }
-    else if(UI.qtab === 'queue'){ cmd('playq', {i: i}); switchTab('player'); }
-    else { cmd('playlib', {src: UI.qtab === 'recent' ? 'recent' : 'liked', i: i}); switchTab('player'); }
+    if(inSearch){ var t2 = UI.search && UI.search.items[i]; if(t2){ reportSend('play',{mode:'now',tr:slimT(t2)},'Playback requested'); } }
+    else if(UI.qtab === 'queue'){ if(reportSend('playq',{i:i,id:(D.q.items[i]||{}).id}))switchTab('player'); }
+    else { if(reportSend('playlib',{src:UI.qtab==='recent'?'recent':'liked',i:i,id:(listFor(UI.qtab)[i]||{}).id}))switchTab('player'); }
   }
 });
 document.addEventListener('keydown', function(e){ if((e.key === 'Enter' || e.key === ' ') && e.target.classList && e.target.classList.contains('row')){ e.preventDefault(); e.target.click(); } });
@@ -955,7 +971,7 @@ var sk = $('p-seek');
 sk.addEventListener('pointerdown', function(){ UI.seekDrag = true; });
 sk.addEventListener('input', function(){ UI.seekDrag = true; paintRange(sk); var t = D.pos.tot || 0; $('p-cur').textContent = fmt(+sk.value / 1000 * t); });
 sk.addEventListener('change', function(){
-  var f = +sk.value / 1000; cmd('seek', {f: f}); D.pos.pos = f * (D.pos.tot || 0); D.pos.at = performance.now();
+  var f = +sk.value / 1000;if(curP().live||!reportSend('seek',{f:f})){UI.seekDrag=false;paintSeek();return;} D.pos.pos = f * (D.pos.tot || 0); D.pos.at = performance.now();
   setTimeout(function(){ UI.seekDrag = false; paintSeek(); }, 400);
 });
 ['pointerup', 'pointercancel'].forEach(function(n){ sk.addEventListener(n, function(){ setTimeout(function(){ UI.seekDrag = false; paintSeek(); }, 600); }); });
@@ -980,7 +996,7 @@ function emptySearch(){
   return (r.length ? '<div class="h2">Recent searches</div><div class="chips">' + r.map(function(x, i){ return '<button type="button" data-rs="' + esc(x) + '" style="animation-delay:' + i * 40 + 'ms">' + esc(x) + '</button>'; }).join('') + '</div>' : '') +
     '<div class="empty"><svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="m21 21-4.3-4.3"/></svg><div>Search YouTube Music, or paste a song, playlist or channel link.</div></div>';
 }
-$('s-out').addEventListener('click', function(e){ var c = e.target.closest('[data-rs]'); if(c){ $('s-q').value = c.dataset.rs; $('s-clr').hidden = false; buzz(); doSearch(); } });
+$('s-out').addEventListener('click', function(e){ if(e.target.closest('#search-retry')){doSearch();return;}var c = e.target.closest('[data-rs]'); if(c){ $('s-q').value = c.dataset.rs; $('s-clr').hidden = false; buzz(); doSearch(); } });
 $('s-q').addEventListener('input', function(){ $('s-clr').hidden = !this.value; });
 $('s-clr').addEventListener('click', function(){ var q = $('s-q'); q.value = ''; this.hidden = true; UI.search = null; UI.searchRid++; clearTimeout(UI.sT); renderSearch(); q.focus(); });
 $('wk').addEventListener('click', toggleWake);
@@ -1008,13 +1024,13 @@ $('wk').addEventListener('click', toggleWake);
 
 /* ---------------- boot ---------------- */
 try{ var cv = document.createElement('canvas'); cv.width = cv.height = 180; var cx = cv.getContext('2d'); cx.fillStyle = '#140e18'; cx.fillRect(0, 0, 180, 180); var gr = cx.createRadialGradient(90, 90, 6, 90, 90, 52); gr.addColorStop(0, '#f6c27a'); gr.addColorStop(1, '#e8902f'); cx.fillStyle = gr; cx.beginPath(); cx.arc(90, 90, 52, 0, 7); cx.fill(); var ti = document.createElement('link'); ti.rel = 'apple-touch-icon'; ti.href = cv.toDataURL('image/png'); document.head.appendChild(ti); }catch(_){}
-$('pname').value = store.name;
+$('pname').value = store.name; connectButton();
 renderSearch(); renderQueueTab(); paintWake();
 if(store.ms){ document.addEventListener('pointerdown', function once(){ document.removeEventListener('pointerdown', once, true); if(store.ms && !MS.on) msStart(true); }, true); }
 var hashCode = normCode((location.hash || '').replace(/^#/, ''));
 try{ if(location.hash) history.replaceState(null, '', location.pathname + location.search); }catch(_){}
-if(CODE_RE.test(hashCode)){ $('code').value = pretty(hashCode); setTimeout(function(){ retries = 0; connect(hashCode); }, 200); }
-else if(store.code){ $('code').value = pretty(store.code); if(store.token) setTimeout(function(){ retries = 0; connect(store.code); }, 200); }
+if(CODE_RE.test(hashCode)){ $('code').value = pretty(hashCode); bootT=setTimeout(function(){retries=0;connect(hashCode);},200); }
+else if(store.code){ $('code').value = pretty(store.code); if(store.auto&&store.tokens[store.code])bootT=setTimeout(function(){retries=0;connect(store.code);},200); }
 if(wantWake) getWake(true);
 if(!window.Peer) window.addEventListener('load', function(){ if(!window.Peer) cmsg('Could not load the connection library. Check your internet and reload.', 'err'); });
 })();
